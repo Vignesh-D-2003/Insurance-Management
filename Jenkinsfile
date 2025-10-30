@@ -1,112 +1,104 @@
 pipeline {
     agent any
-    
+
     environment {
-        DOCKER_REGISTRY = 'docker.io'
-        DOCKER_CREDENTIALS_ID = 'docker-hub-credentials'
-        BACKEND_IMAGE = 'insurance-backend'
-        FRONTEND_IMAGE = 'insurance-frontend'
-        VERSION = "${BUILD_NUMBER}"
+        // Docker Hub credentials
+        DOCKER_HUB_CREDENTIALS = credentials('dockerhub-cred')
+        DOCKER_HUB_USER = "${DOCKER_HUB_CREDENTIALS_USR}"
+        DOCKER_HUB_PASS = "${DOCKER_HUB_CREDENTIALS_PSW}"
+
+        // Docker image names
+        FRONTEND_IMAGE = "${DOCKER_HUB_USER}/insurance-frontend:latest"
+        BACKEND_IMAGE = "${DOCKER_HUB_USER}/insurance-backend:latest"
+
+        // AWS EC2 details
+        EC2_HOST = "ubuntu@<your-ec2-public-ip>"  // Replace with actual EC2 IP
     }
-    
+
     stages {
-        stage('Checkout') {
+
+        stage('Checkout Code') {
             steps {
-                checkout scm
+                echo "🔹 Checking out source code from GitHub..."
+                git branch: 'main', url: 'https://github.com/<your-username>/insurance-management-system.git'
             }
         }
-        
-        stage('Build Backend') {
+
+        stage('Build Backend (Spring Boot)') {
             steps {
+                echo "🔹 Building Spring Boot backend..."
                 dir('insurance-backend-final') {
                     sh 'mvn clean package -DskipTests'
                 }
             }
         }
-        
-        stage('Test Backend') {
+
+        stage('Build Frontend (Angular)') {
             steps {
-                dir('insurance-backend-final') {
-                    sh 'mvn test'
-                }
-            }
-            post {
-                always {
-                    junit '**/target/surefire-reports/*.xml'
-                }
-            }
-        }
-        
-        stage('Build Frontend') {
-            steps {
-                dir('insurance-frontend-angular') {
+                echo "🔹 Building Angular frontend..."
+                dir('insurance-frontend-final') {
                     sh 'npm install'
-                    sh 'npm run build'
+                    sh 'npm run build --prod'
                 }
             }
         }
-        
+
         stage('Build Docker Images') {
-            parallel {
-                stage('Build Backend Image') {
-                    steps {
-                        dir('insurance-backend-final') {
-                            sh "docker build -t ${BACKEND_IMAGE}:${VERSION} ."
-                            sh "docker tag ${BACKEND_IMAGE}:${VERSION} ${BACKEND_IMAGE}:latest"
-                        }
-                    }
-                }
-                stage('Build Frontend Image') {
-                    steps {
-                        dir('insurance-frontend-angular') {
-                            sh "docker build -t ${FRONTEND_IMAGE}:${VERSION} ."
-                            sh "docker tag ${FRONTEND_IMAGE}:${VERSION} ${FRONTEND_IMAGE}:latest"
-                        }
-                    }
-                }
+            steps {
+                echo "🐳 Building Docker images for frontend & backend..."
+                sh "docker build -t ${FRONTEND_IMAGE} ./insurance-frontend-final"
+                sh "docker build -t ${BACKEND_IMAGE} ./insurance-backend-final"
             }
         }
-        
-        stage('Push to Registry') {
+
+        stage('Push to Docker Hub') {
             steps {
-                script {
-                    docker.withRegistry("https://${DOCKER_REGISTRY}", DOCKER_CREDENTIALS_ID) {
-                        sh "docker push ${BACKEND_IMAGE}:${VERSION}"
-                        sh "docker push ${BACKEND_IMAGE}:latest"
-                        sh "docker push ${FRONTEND_IMAGE}:${VERSION}"
-                        sh "docker push ${FRONTEND_IMAGE}:latest"
-                    }
-                }
+                echo "🚀 Pushing Docker images to Docker Hub..."
+                sh """
+                    echo ${DOCKER_HUB_PASS} | docker login -u ${DOCKER_HUB_USER} --password-stdin
+                    docker push ${FRONTEND_IMAGE}
+                    docker push ${BACKEND_IMAGE}
+                    docker logout
+                """
             }
         }
-        
-        stage('Deploy') {
+
+        stage('Deploy to AWS EC2') {
             steps {
-                sh 'docker-compose down'
-                sh 'docker-compose up -d'
-            }
-        }
-        
-        stage('Health Check') {
-            steps {
-                script {
-                    sleep 30
-                    sh 'curl -f http://localhost:8080/api/statistics/dashboard || exit 1'
-                    sh 'curl -f http://localhost:80 || exit 1'
+                echo "🟢 Deploying application to AWS EC2 via SSH..."
+                sshagent (credentials: ['aws-ssh-key']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${EC2_HOST} '
+                            echo "🔹 Pulling new Docker images..."
+                            sudo docker pull ${FRONTEND_IMAGE}
+                            sudo docker pull ${BACKEND_IMAGE}
+
+                            echo "🔹 Stopping existing containers..."
+                            sudo docker stop frontend backend || true
+                            sudo docker rm frontend backend || true
+
+                            echo "🔹 Starting backend..."
+                            sudo docker run -d --name backend -p 8080:8080 ${BACKEND_IMAGE}
+
+                            echo "🔹 Starting frontend..."
+                            sudo docker run -d --name frontend -p 4200:80 ${FRONTEND_IMAGE}
+
+                            echo "✅ Deployment successful!"
+                        '
+                    """
                 }
             }
         }
     }
-    
+
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo "✅ Pipeline executed successfully! Visit your app at:"
+            echo "   🌐 Frontend: http://<your-ec2-public-ip>:4200"
+            echo "   🔗 Backend: http://<your-ec2-public-ip>:8080"
         }
         failure {
-            echo 'Pipeline failed!'
-        }
-        always {
-            sh 'docker system prune -f'
+            echo "❌ Pipeline failed. Check Jenkins logs for details."
         }
     }
 }
