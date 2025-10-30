@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./insurance-backend-final
+      dockerfile: Dockerfile
+    container_name: insurance-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:h2:mem:insurance_db
+      - SPRING_DATASOURCE_USERNAME=sa
+      - SPRING_DATASOURCE_PASSWORD=password
+    networks:
+      - insurance-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/statistics/dashboard"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./insurance-frontend-angular
+      dockerfile: Dockerfile
+    container_name: insurance-frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+    networks:
+      - insurance-network
+
+networks:
+  insurance-network:
+    driver: bridge
