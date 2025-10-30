@@ -38,7 +38,8 @@ pipeline {
                 echo "🌐 Building Angular frontend..."
                 dir('insurance-frontend-angular') {
                     sh 'npm install'
-                    sh 'npm run build --configuration production'
+                    // ✅ Removed --configuration production
+                    sh 'npm run build'
                 }
             }
         }
