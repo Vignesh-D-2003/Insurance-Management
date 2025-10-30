@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        // Docker Hub credentials
+        // Docker Hub credentials (stored in Jenkins)
         DOCKER_HUB_CREDENTIALS = credentials('dockerhub-cred')
         DOCKER_HUB_USER = "${DOCKER_HUB_CREDENTIALS_USR}"
         DOCKER_HUB_PASS = "${DOCKER_HUB_CREDENTIALS_PSW}"
@@ -11,8 +11,8 @@ pipeline {
         FRONTEND_IMAGE = "${DOCKER_HUB_USER}/insurance-frontend:latest"
         BACKEND_IMAGE = "${DOCKER_HUB_USER}/insurance-backend:latest"
 
-        // AWS EC2 details
-        EC2_HOST = "ubuntu@54.164.59.117"  // Replace with actual EC2 IP
+        // AWS EC2 instance details
+        EC2_HOST = "ubuntu@54.164.59.117"   // ✅ Replace with your EC2 public IP
     }
 
     stages {
@@ -26,7 +26,7 @@ pipeline {
 
         stage('Build Backend (Spring Boot)') {
             steps {
-                echo "🔹 Building Spring Boot backend..."
+                echo "⚙️ Building Spring Boot backend..."
                 dir('insurance-backend-final') {
                     sh 'mvn clean package -DskipTests'
                 }
@@ -35,17 +35,17 @@ pipeline {
 
         stage('Build Frontend (Angular)') {
             steps {
-                echo "🔹 Building Angular frontend..."
+                echo "🌐 Building Angular frontend..."
                 dir('insurance-frontend-final') {
                     sh 'npm install'
-                    sh 'npm run build --prod'
+                    sh 'npm run build --configuration production'
                 }
             }
         }
 
         stage('Build Docker Images') {
             steps {
-                echo "🐳 Building Docker images for frontend & backend..."
+                echo "🐳 Building Docker images for frontend and backend..."
                 sh "docker build -t ${FRONTEND_IMAGE} ./insurance-frontend-final"
                 sh "docker build -t ${BACKEND_IMAGE} ./insurance-backend-final"
             }
@@ -55,7 +55,7 @@ pipeline {
             steps {
                 echo "🚀 Pushing Docker images to Docker Hub..."
                 sh """
-                    echo ${DOCKER_HUB_PASS} | docker login -u ${DOCKER_HUB_USER} --password-stdin
+                    echo "${DOCKER_HUB_PASS}" | docker login -u "${DOCKER_HUB_USER}" --password-stdin
                     docker push ${FRONTEND_IMAGE}
                     docker push ${BACKEND_IMAGE}
                     docker logout
@@ -65,25 +65,25 @@ pipeline {
 
         stage('Deploy to AWS EC2') {
             steps {
-                echo "🟢 Deploying application to AWS EC2 via SSH..."
-                sshagent (credentials: ['aws-ssh-key']) {
+                echo "🟢 Deploying containers on AWS EC2 via SSH..."
+                sshagent(credentials: ['aws-ssh-key']) {
                     sh """
                         ssh -o StrictHostKeyChecking=no ${EC2_HOST} '
-                            echo "🔹 Pulling new Docker images..."
+                            echo "🔹 Pulling updated Docker images..."
                             sudo docker pull ${FRONTEND_IMAGE}
                             sudo docker pull ${BACKEND_IMAGE}
 
-                            echo "🔹 Stopping existing containers..."
+                            echo "🔹 Stopping old containers (if running)..."
                             sudo docker stop frontend backend || true
                             sudo docker rm frontend backend || true
 
-                            echo "🔹 Starting backend..."
+                            echo "🔹 Starting backend container..."
                             sudo docker run -d --name backend -p 8080:8080 ${BACKEND_IMAGE}
 
-                            echo "🔹 Starting frontend..."
-                            sudo docker run -d --name frontend -p 4200:80 ${FRONTEND_IMAGE}
+                            echo "🔹 Starting frontend container..."
+                            sudo docker run -d --name frontend -p 80:80 ${FRONTEND_IMAGE}
 
-                            echo "✅ Deployment successful!"
+                            echo "✅ Deployment completed successfully!"
                         '
                     """
                 }
@@ -93,12 +93,12 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline executed successfully! Visit your app at:"
-            echo "   🌐 Frontend: http://<your-ec2-public-ip>:4200"
-            echo "   🔗 Backend: http://<your-ec2-public-ip>:8080"
+            echo "✅ Pipeline executed successfully!"
+            echo "🌐 Frontend: http://${EC2_HOST.split('@')[1]}"
+            echo "🔗 Backend:  http://${EC2_HOST.split('@')[1]}:8080"
         }
         failure {
-            echo "❌ Pipeline failed. Check Jenkins logs for details."
+            echo "❌ Pipeline failed. Please check Jenkins logs for details."
         }
     }
 }
