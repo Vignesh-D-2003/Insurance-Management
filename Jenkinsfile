@@ -36,7 +36,7 @@ pipeline {
         stage('Build Frontend (Angular)') {
             steps {
                 echo "🌐 Building Angular frontend..."
-                dir('insurance-frontend-final') {
+                dir('insurance-frontend-angular') {
                     sh 'npm install'
                     sh 'npm run build --configuration production'
                 }
