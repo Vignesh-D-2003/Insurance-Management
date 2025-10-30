@@ -12,7 +12,7 @@ pipeline {
         BACKEND_IMAGE = "${DOCKER_HUB_USER}/insurance-backend:latest"
 
         // AWS EC2 details
-        EC2_HOST = "ubuntu@<your-ec2-public-ip>"  // Replace with actual EC2 IP
+        EC2_HOST = "ubuntu@54.164.59.117"  // Replace with actual EC2 IP
     }
 
     stages {
