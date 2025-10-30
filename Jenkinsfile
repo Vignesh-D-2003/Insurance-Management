@@ -20,7 +20,7 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 echo "🔹 Checking out source code from GitHub..."
-                git branch: 'main', url: 'https://github.com/<your-username>/insurance-management-system.git'
+                git branch: 'main', url: 'https://github.com/Vignesh-D-2003/Insurance-Management.git'
             }
         }
 
